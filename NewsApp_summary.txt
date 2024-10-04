@@ -1,0 +1,697 @@
+File: ./app/src/androidTest/java/cl/newsapp/ExampleInstrumentedTest.kt
+
+package cl.newsapp
+
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.ext.junit.runners.AndroidJUnit4
+
+import org.junit.Test
+import org.junit.runner.RunWith
+
+import org.junit.Assert.*
+
+/**
+ * Instrumented test, which will execute on an Android device.
+ *
+ * See [testing documentation](http://d.android.com/tools/testing).
+ */
+@RunWith(AndroidJUnit4::class)
+class ExampleInstrumentedTest {
+    @Test
+    fun useAppContext() {
+        // Context of the app under test.
+        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
+        assertEquals("cl.newsapp", appContext.packageName)
+    }
+}
+================================================================================
+
+File: ./app/src/test/java/cl/newsapp/ExampleUnitTest.kt
+
+package cl.newsapp
+
+import org.junit.Test
+
+import org.junit.Assert.*
+
+/**
+ * Example local unit test, which will execute on the development machine (host).
+ *
+ * See [testing documentation](http://d.android.com/tools/testing).
+ */
+class ExampleUnitTest {
+    @Test
+    fun addition_isCorrect() {
+        assertEquals(4, 2 + 2)
+    }
+}
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/MainActivity.kt
+
+package cl.newsapp
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import cl.newsapp.ui.theme.NewsAppTheme
+import cl.newsapp.view.HomeView
+import cl.newsapp.viewmodel.NewsViewModel
+import androidx.navigation.compose.rememberNavController
+import cl.newsapp.view.NewsDetailView
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            NewsAppTheme {
+                val navController = rememberNavController()
+                val viewModel: NewsViewModel = viewModel()
+
+                NavHost(navController = navController, startDestination = "home") {
+                    composable("home") {
+                        HomeView(viewModel, navController)
+                    }
+
+                    composable("newsDetail/{newsUrl}") { backStackEntry ->
+                        val newsUrl = backStackEntry.arguments?.getString("newsUrl")
+                        if (newsUrl != null) {
+                            NewsDetailView(newsUrl, viewModel, navController)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/viewmodel/NewsViewModel.kt
+
+package cl.newsapp.viewmodel
+
+import androidx.lifecycle.viewModelScope
+import cl.newsapp.repository.NewsRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import androidx.lifecycle.ViewModel
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.cachedIn
+import kotlinx.coroutines.flow.Flow
+import androidx.paging.PagingData
+import cl.newsapp.data.NewsDataSource
+import cl.newsapp.model.News
+
+class NewsViewModel : ViewModel() {
+
+    private val repository = NewsRepository()
+
+    private val currentQuery = MutableStateFlow("")
+
+    // Paginación de noticias con búsqueda dinámica
+    fun getNewsPager(query: String): Flow<PagingData<News>> {
+        currentQuery.value = query
+        return Pager(PagingConfig(pageSize = 1)) {
+            NewsDataSource(repository, query) // Pasar la query al DataSource
+        }.flow.cachedIn(viewModelScope)  // Caché para reutilizar los datos mientras el ViewModel esté activo
+    }
+
+    private val _newsList = MutableStateFlow<List<News>>(emptyList())
+    val newsList: StateFlow<List<News>> = _newsList
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
+
+    // Buscar noticia por URL (u otro identificador)
+    fun getNewsByUrl(url: String): News? {
+        return _newsList.value.find { it.url == url }
+    }
+}
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/ui/theme/Color.kt
+
+package cl.newsapp.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+val Purple80 = Color(0xFFD0BCFF)
+val PurpleGrey80 = Color(0xFFCCC2DC)
+val Pink80 = Color(0xFFEFB8C8)
+
+val Purple40 = Color(0xFF6650a4)
+val PurpleGrey40 = Color(0xFF625b71)
+val Pink40 = Color(0xFF7D5260)
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/ui/theme/Theme.kt
+
+package cl.newsapp.ui.theme
+
+import android.app.Activity
+import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+
+private val DarkColorScheme = darkColorScheme(
+    primary = Purple80,
+    secondary = PurpleGrey80,
+    tertiary = Pink80
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = Purple40,
+    secondary = PurpleGrey40,
+    tertiary = Pink40
+
+    /* Other default colors to override
+    background = Color(0xFFFFFBFE),
+    surface = Color(0xFFFFFBFE),
+    onPrimary = Color.White,
+    onSecondary = Color.White,
+    onTertiary = Color.White,
+    onBackground = Color(0xFF1C1B1F),
+    onSurface = Color(0xFF1C1B1F),
+    */
+)
+
+@Composable
+fun NewsAppTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    // Dynamic color is available on Android 12+
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
+
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
+}
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/ui/theme/Type.kt
+
+package cl.newsapp.ui.theme
+
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
+// Set of Material typography styles to start with
+val Typography = Typography(
+    bodyLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.5.sp
+    )
+    /* Other default text styles to override
+    titleLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+        letterSpacing = 0.sp
+    ),
+    labelSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.5.sp
+    )
+    */
+)
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/repository/NewsRepository.kt
+
+package cl.newsapp.repository
+
+import cl.newsapp.model.NewsResponse
+import cl.newsapp.util.Constants
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.GET
+import retrofit2.http.Query
+
+interface NewsApi {
+    @GET("v2/everything")
+    suspend fun getNewsPaged(
+        @Query("q") query: String,
+        @Query("page") page: Int,
+        @Query("pageSize") pageSize: Int = 1,  // Tamaño de página predeterminado
+        @Query("apiKey") apiKey: String = Constants.API_KEY
+    ): NewsResponse
+}
+
+class NewsRepository {
+    private val retrofit = Retrofit.Builder()
+        .baseUrl(Constants.BASE_URL)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    private val api = retrofit.create(NewsApi::class.java)
+
+    // Obtener noticias paginadas
+    suspend fun getNewsPaged(query: String, page: Int, pageSize: Int) = api.getNewsPaged(query, page, pageSize)
+}
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/util/Constants.kt
+
+package cl.newsapp.util
+
+object Constants {
+    const val BASE_URL = "https://newsapi.org/"
+    const val API_KEY = "4a3bb0f934e24f4b9a959294504e9ab7" // Usa tu propia clave API
+}
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/model/News.kt
+
+package cl.newsapp.model
+
+data class News(
+    val source: NewsSource,
+    val author: String?,
+    val title: String,
+    val description: String?,
+    val url: String,
+    val urlToImage: String?,
+    val publishedAt: String,
+    val content: String?
+)
+
+data class NewsSource(
+    val id: String?,
+    val name: String
+)
+
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/model/NewsResponse.kt
+
+package cl.newsapp.model
+
+data class NewsResponse(
+    val status: String,
+    val totalResults: Int,
+    val articles: List<News>
+)
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/view/Components.kt
+
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/view/HomeView.kt
+
+package cl.newsapp.view
+
+import cl.newsapp.model.News
+import cl.newsapp.viewmodel.NewsViewModel
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import androidx.navigation.NavHostController
+import coil.compose.AsyncImagePainter
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
+import com.valentinilk.shimmer.shimmer
+import kotlinx.coroutines.launch
+
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.*
+import androidx.compose.runtime.collectAsState
+import androidx.navigation.NavController
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.items
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeView(viewModel: NewsViewModel, navController: NavHostController) {
+    var searchQuery by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
+    var searchInProgress by remember { mutableStateOf(false) }
+
+    // Obtener los resultados paginados basados en la búsqueda
+    val newsPagingItems = if (searchQuery.isNotEmpty()) {
+        viewModel.getNewsPager(searchQuery).collectAsLazyPagingItems()
+    } else {
+        null
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    TextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text("Buscar noticias") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                actions = {
+                    IconButton(onClick = {
+                        if (searchQuery.isNotEmpty()) {
+                            searchInProgress = true
+                            coroutineScope.launch {
+                                viewModel.getNewsPager(searchQuery)
+                            }
+                        }
+                    }) {
+                        Icon(imageVector = Icons.Default.Search, contentDescription = "Buscar")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        if (newsPagingItems != null) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                items(newsPagingItems) { news ->
+                    if (news != null) {
+                        NewsCard(news) {
+                            val encodedUrl = URLEncoder.encode(news.url, StandardCharsets.UTF_8.toString())
+                            navController.navigate("newsDetail/$encodedUrl")
+                        }
+                    }
+                }
+
+                // Manejo de estados de carga
+                when (newsPagingItems.loadState.append) {
+                    is androidx.paging.LoadState.Loading -> {
+                        item { CircularProgressIndicator(modifier = Modifier.fillMaxWidth().wrapContentSize()) }
+                    }
+                    is androidx.paging.LoadState.Error -> {
+                        item { Text(text = "Error al cargar noticias.") }
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun NewsCard(news: News, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .clickable { onClick() }
+            .shadow(8.dp, shape = RoundedCornerShape(8.dp)),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(4.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+
+            // Imagen destacada con shimmer durante la carga
+            if (news.urlToImage != null) {
+                SubcomposeAsyncImage(
+                    model = news.urlToImage,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    contentScale = ContentScale.Crop
+                ) {
+                    when (painter.state) {  // 'painter.state' accediendo desde el scope correctamente
+                        is AsyncImagePainter.State.Loading -> {
+                            // Mostrar shimmer mientras la imagen se carga
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .shimmer() // Efecto shimmer durante la carga
+                                    .background(Color.LightGray)
+                            )
+                        }
+                        is AsyncImagePainter.State.Error -> {
+                            // Mostrar un contenido alternativo en caso de error
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Gray),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Error al cargar imagen", color = Color.White)
+                            }
+                        }
+                        else -> {
+                            // Mostrar la imagen una vez que se haya cargado
+                            SubcomposeAsyncImageContent()
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Contenedor para el título, descripción y otros detalles
+            Column(modifier = Modifier.padding(16.dp)) {
+
+                // Título de la noticia
+                Text(
+                    text = news.title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Descripción (truncada si es muy larga)
+                Text(
+                    text = news.description ?: "",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = Color.Gray
+                    ),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Línea inferior con la fecha y el botón "Leer más"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Fecha de publicación
+                    Text(
+                        text = news.publishedAt.split("T")[0],
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color.Gray,
+                            fontStyle = FontStyle.Italic
+                        )
+                    )
+
+                    // Botón para ver más detalles
+                    TextButton(onClick = { onClick() }) {
+                        Text(
+                            text = "Leer más",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/view/NewsDetailView.kt
+
+package cl.newsapp.view
+
+import android.annotation.SuppressLint
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import coil.compose.rememberAsyncImagePainter
+import cl.newsapp.viewmodel.NewsViewModel
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
+import java.util.*
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.viewinterop.AndroidView
+
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter", "SetJavaScriptEnabled")
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NewsDetailView(newsUrl: String, viewModel: NewsViewModel, navController: NavController) {
+    // Decodificar la URL antes de usarla en el WebView
+    val decodedUrl = URLDecoder.decode(newsUrl, StandardCharsets.UTF_8.toString())
+    val selectedNews = remember { viewModel.getNewsByUrl(decodedUrl) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                    title = {
+                        if (selectedNews != null) {
+                            Text(
+                                text = selectedNews.title,
+                                maxLines = 2,  // Permitir hasta 2 líneas para el título
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp
+                                )
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.navigateUp() }) {
+                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                )
+        }
+    ) {
+        // Incluir el WebView en el contenido de Compose
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                WebView(context).apply {
+                    webViewClient = WebViewClient()  // Esto permite que la navegación ocurra dentro de la app
+                    settings.javaScriptEnabled = true  // Habilitar JavaScript si la página lo necesita
+                    loadUrl(decodedUrl)  // Cargar la URL de la noticia
+                }
+            }
+        )
+    }
+}
+
+================================================================================
+
+File: ./app/src/main/java/cl/newsapp/data/NewsDataSource.kt
+
+package cl.newsapp.data
+
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
+import cl.newsapp.model.News
+import cl.newsapp.repository.NewsRepository
+
+class NewsDataSource(private val repository: NewsRepository, private val query: String) : PagingSource<Int, News>() {
+    
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, News> {
+        return try {
+            val currentPage = params.key ?: 1  // Si es la primera página, empezar en la 1
+            val response = repository.getNewsPaged(query, currentPage, params.loadSize)  // Usar la query proporcionada
+            val news = response.articles
+
+            LoadResult.Page(
+                data = news,
+                prevKey = if (currentPage == 1) null else currentPage - 1,
+                nextKey = if (news.isEmpty()) null else currentPage + 1
+            )
+        } catch (e: Exception) {
+            LoadResult.Error(e)
+        }
+    }
+
+    override fun getRefreshKey(state: PagingState<Int, News>): Int? {
+        return state.anchorPosition?.let { position ->
+            state.closestPageToPosition(position)?.prevKey?.plus(1) ?: state.closestPageToPosition(position)?.nextKey?.minus(1)
+        }
+    }
+}
+
+
+================================================================================
+
